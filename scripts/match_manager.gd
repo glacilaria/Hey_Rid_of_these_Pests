@@ -394,6 +394,9 @@ func _build_hud() -> void:
 	_hud = Label.new()
 	_hud.position = Vector2(12, 8)
 	layer.add_child(_hud)
+	var cd_hud := SkillCooldownHUD.new()
+	cd_hud.setup(self)
+	layer.add_child(cd_hud)
 	add_child(layer)
 
 

@@ -28,7 +28,8 @@ var aim := Vector2.RIGHT
 var move_mult := 1.0
 var stun_until := 0.0
 
-var cd := {1: 0.0, 2: 0.0}
+var cd := {1: 0.0, 2: 0.0}          # seconds left on skill 1 / 2 (server is the source of truth)
+var cd_max := {1: 1.0, 2: 1.0}      # length of the cooldown that is currently running (for the HUD circles)
 var atk_cd := 0.0
 var next_crits := 0
 var attack_count := 0
@@ -124,6 +125,9 @@ func _physics_process(delta: float) -> void:
 		_local_input(delta)
 	if multiplayer.is_server():
 		_server_tick(delta)
+	else:
+		cd[1] = maxf(0.0, cd[1] - delta)       # client mirror of the server's cooldowns (HUD only)
+		cd[2] = maxf(0.0, cd[2] - delta)
 	for f in _fx:
 		f.t -= delta
 	_fx = _fx.filter(func(f): return f.t > 0.0)
@@ -153,6 +157,37 @@ func _to_server(method: StringName, args: Array) -> void:
 		callv(method, args)
 	else:
 		callv("rpc_id", [1, method] + args)
+
+
+## SERVER: start (or replace) a skill cooldown and tell the owning player so the HUD circle follows it.
+func start_cd(slot: int, secs: float) -> void:
+	cd[slot] = secs
+	cd_max[slot] = maxf(secs, 0.01)
+	_push_cd()
+
+
+func _push_cd() -> void:
+	if is_bot:
+		return
+	if peer_id == multiplayer.get_unique_id():
+		net_cd(cd[1], cd[2], cd_max[1], cd_max[2])          # host's own player: no network hop
+	else:
+		rpc_id(peer_id, "net_cd", cd[1], cd[2], cd_max[1], cd_max[2])
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_cd(left1: float, left2: float, max1: float, max2: float) -> void:
+	if not _from_server():
+		return
+	cd = {1: left1, 2: left2}
+	cd_max = {1: max1, 2: max2}
+
+
+## 0.0 = just used, 1.0 = ready again (what the HUD circles show).
+func cd_fill(slot: int) -> float:
+	if cd[slot] <= 0.0:
+		return 1.0
+	return clampf(1.0 - cd[slot] / cd_max[slot], 0.0, 1.0)
 
 
 func _server_tick(delta: float) -> void:
@@ -231,6 +266,7 @@ func server_damage(amount: float, _source: Node = null) -> void:
 		_mitt_icd = _now() + 1.0
 		cd[1] = maxf(0.0, cd[1] - 0.5)
 		cd[2] = maxf(0.0, cd[2] - 0.5)
+		_push_cd()
 	if shield > 0.0:
 		var absorbed := minf(shield, amount)
 		shield -= absorbed

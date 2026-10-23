@@ -11,7 +11,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
 	if p.dead or p.cd[slot] > 0.0:
 		return
 	var def: Dictionary = GameData.CHARACTERS[p.char_id]["skill%d" % slot]
-	p.cd[slot] = def.cd * (1.0 - p.cdr())
+	p.start_cd(slot, def.cd * (1.0 - p.cdr()))
 	if p.has_item("overclocked_igniter"):
 		p.empowered = true                    # next basic attack deals +50%
 	var pos := p.global_position
@@ -94,7 +94,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
 				if e.global_position.distance_to(pos) <= def.range and (best == null or e.hp > best.hp):
 					best = e
 			if best == null:
-				p.cd[slot] = 0.5   # no target -> refund
+				p.start_cd(slot, 0.5)   # no target -> refund
 				return
 			p.rpc("net_teleport", best.global_position - best.face * 36.0)
 			p.next_crits = def.crits
