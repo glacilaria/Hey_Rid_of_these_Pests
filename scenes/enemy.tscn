@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://c7ejt6vtwao1"]
+
+[ext_resource type="Script" uid="uid://c5ok3nq8jutdv" path="res://scripts/enemy.gd" id="1_7p1mj"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_g2els"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_qhqgy"]
+
+[node name="root" type="CharacterBody2D" unique_id=1259654572]
+script = ExtResource("1_7p1mj")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2134814832]
+shape = SubResource("CircleShape2D_g2els")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=2086673860]
+
+[node name="AttackArea" type="Area2D" parent="." unique_id=788878508]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackArea" unique_id=575434230]
+shape = SubResource("CircleShape2D_qhqgy")

@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://eu5fj7n836kt"]
+
+[ext_resource type="Script" uid="uid://bwipdhf8kqp38" path="res://scripts/player.gd" id="1_3vyb7"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_dqkch"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_qlg0r"]
+
+[node name="root" type="CharacterBody2D" unique_id=1653590317]
+script = ExtResource("1_3vyb7")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=937368662]
+shape = SubResource("CircleShape2D_dqkch")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=175822122]
+
+[node name="HitArea" type="Area2D" parent="." unique_id=993203962]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="HitArea" unique_id=2102513346]
+shape = SubResource("CircleShape2D_qlg0r")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="." unique_id=405761171]
