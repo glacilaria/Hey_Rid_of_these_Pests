@@ -199,25 +199,49 @@ func _chase(delta: float, now: float) -> void:
 	target = _pick_target(now)
 	if target == null:
 		return
-	var to := target.global_position - global_position
-	var dir := to.normalized()
-	var edge := to.length() - _target_radius(target)
-	face = face.lerp(dir, 0.35).normalized() if face.lerp(dir, 0.35).length() > 0.01 else dir
+	var to_target := target.global_position - global_position
+	var edge := to_target.length() - _target_radius(target)
 	if _try_attack(edge, now):
 		return
 	if now < root_until:
 		return
+
+	# If enemy and target are on opposite sides of the right-side house wall, route through DOOR_POS
+	var door_x := MatchManager.DOOR_POS.x
+	var nav_goal := target.global_position
+	var enemy_outside := global_position.x > door_x
+	var target_outside := target.global_position.x > door_x
+	if enemy_outside != target_outside:
+		if absf(global_position.y - MatchManager.DOOR_POS.y) > MatchManager.DOOR_HALF_GAP - radius:
+			nav_goal = MatchManager.DOOR_POS + Vector2(20.0 if enemy_outside else -20.0, 0.0)
+
+	var to := nav_goal - global_position
+	var dir := to.normalized()
+	face = face.lerp(dir, 0.35).normalized() if face.lerp(dir, 0.35).length() > 0.01 else dir
+
 	var keep: float = data.get("keep", 0.0)
-	if keep > 0.0:
+	if keep > 0.0 and nav_goal == target.global_position:
 		if edge < keep - 20.0:
 			dir = -dir * 0.6
 		elif edge <= keep + 20.0:
 			return
-	elif edge <= 8.0:
+	elif edge <= 8.0 and nav_goal == target.global_position:
 		return
+
 	var spd := speed * (1.0 - slow)
-	global_position += dir * spd * delta
-	global_position = global_position.clamp(Vector2(-99999, -99999), Vector2(99999, 99999))
+	var next_pos := global_position + dir * spd * delta
+
+	if is_yard:
+		# Yard pests never enter the house; they stay outside in YARD_RECT
+		next_pos.x = clampf(next_pos.x, MatchManager.YARD_RECT.position.x + radius + 12.0, MatchManager.YARD_RECT.end.x - radius)
+		next_pos.y = clampf(next_pos.y, MatchManager.YARD_RECT.position.y + radius, MatchManager.YARD_RECT.end.y - radius)
+	else:
+		# Prevent siege pests from clipping through the right house wall outside the doorway gap
+		var crossed_wall := (global_position.x >= door_x and next_pos.x < door_x) or (global_position.x <= door_x and next_pos.x > door_x)
+		if crossed_wall and absf(next_pos.y - MatchManager.DOOR_POS.y) > MatchManager.DOOR_HALF_GAP - radius:
+			next_pos.x = global_position.x
+
+	global_position = next_pos
 
 
 func _try_attack(edge: float, now: float) -> bool:

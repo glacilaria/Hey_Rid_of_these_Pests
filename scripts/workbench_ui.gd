@@ -84,12 +84,12 @@ func hide_ui() -> void:
 func _process(_d: float) -> void:
 	if not visible:
 		return
-	if mm.phase in [MatchManager.Phase.LOADING, MatchManager.Phase.YARD, MatchManager.Phase.VICTORY, MatchManager.Phase.DEFEAT]:
-		hide_ui()                       # server refuses shopping in these phases (see MatchManager._can_shop)
+	if mm.phase in [MatchManager.Phase.LOADING, MatchManager.Phase.VICTORY, MatchManager.Phase.DEFEAT]:
+		hide_ui()
 		return
 	var me := mm.local_player()
 	if me == null or me.dead or me.global_position.distance_to(mm.workbench.global_position) > 160.0:
-		hide_ui()                       # walked away / died
+		hide_ui()
 		return
 	var sig := "%s|%d|%s" % [str(me.inventory), mm.my_ether, mm.phase]
 	if sig != _sig:

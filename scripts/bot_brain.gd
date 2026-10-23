@@ -101,6 +101,23 @@ func think(p: Player, delta: float) -> void:
 				randf_range(MatchManager.YARD_RECT.position.y + 60.0, MatchManager.YARD_RECT.end.y - 60.0))
 		dir = (_wander - p.global_position).normalized()
 
+# ---- Route through the right-side house door when crossing between House and Outside
+	var goal_pos := p.global_position + dir * 100.0
+	if target:
+		goal_pos = target.global_position
+	elif in_kitchen:
+		goal_pos = table_pos
+	else:
+		goal_pos = _wander
+
+	var door_x := MatchManager.DOOR_POS.x
+	var bot_outside := p.global_position.x > door_x
+	var goal_outside := goal_pos.x > door_x
+	if bot_outside != goal_outside:
+		if absf(p.global_position.y - MatchManager.DOOR_POS.y) > MatchManager.DOOR_HALF_GAP - 18.0:
+			var doorway_wp := MatchManager.DOOR_POS + Vector2(28.0 if bot_outside else -28.0, 0.0)
+			dir = (doorway_wp - p.global_position).normalized()
+
 	# ---- dodge red telegraphs (overrides movement)
 	var dodge := _dodge(p)
 	if dodge != Vector2.ZERO:

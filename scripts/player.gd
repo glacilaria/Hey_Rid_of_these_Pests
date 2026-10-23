@@ -64,7 +64,9 @@ func setup(d: Dictionary) -> void:
 func _ready() -> void:
 	add_to_group("players")
 	collision_layer = 1
-	collision_mask = 0   # draft: no body collisions; add walls/obstacles later
+	collision_mask = 4   # Collide with HouseWalls (layer 4); must use the right-side door to go outside
+	if has_node("CollisionShape2D") and $CollisionShape2D.shape is CircleShape2D:
+		($CollisionShape2D.shape as CircleShape2D).radius = 14.0
 	var rc := SceneReplicationConfig.new()
 	for prop in [^".:position", ^".:aim"]:
 		rc.add_property(prop)

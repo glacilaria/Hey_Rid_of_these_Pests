@@ -1,206 +1,836 @@
-From 57a44e90d011bc51968abbdab20161c278a543f2 Mon Sep 17 00:00:00 2001
+From f13fde0833edd9037c8627cb3c73b6d374b30191 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Fri, 23 Oct 2026 02:47:14 +0000
-Subject: [PATCH] Add skill cooldown HUD: two circles (Q/E) that fill as
- cooldowns run
+Date: Fri, 23 Oct 2026 08:04:03 +0000
+Subject: [PATCH 1/3] Fix map: give Ground TileMapLayer a TileSet source so
+ painted tiles show in the 2D editor
 
-- New SkillCooldownHUD (skill_cooldown_hud.gd), created in MatchManager._build_hud.
-  Each circle fills clockwise from 12 o'clock, shows seconds left, and turns green
-  with the key letter when the skill is ready. Skill names are shown underneath.
-- Player.start_cd(slot, secs) replaces direct writes to cd[]: it records the cooldown
-  length (cd_max) and syncs it to the owning player via net_cd, so clients (not just
-  the host) see the correct cooldown. Clients count it down locally between syncs.
-- Oven Mitt Armor's cooldown reduction and the Skewer no-target refund also sync.
-- Player.cd_fill(slot) returns 0..1 for the HUD.
+The Ground layer had 3651 tiles painted against TileSet source id 6, but the
+TileSet was empty (no atlas source), so nothing rendered. Add a TileSetAtlasSource
+at id 6 backed by a placeholder 16x16 atlas (assets/tiles/ground_placeholder.png).
+Swap the texture for the real tileset art if you have it.
 ---
- scripts/match_manager.gd          |  3 ++
- scripts/player.gd                 | 38 +++++++++++++++++++-
- scripts/skill_cooldown_hud.gd     | 60 +++++++++++++++++++++++++++++++
- scripts/skill_cooldown_hud.gd.uid |  1 +
- scripts/skills.gd                 |  4 +--
- 5 files changed, 103 insertions(+), 3 deletions(-)
- create mode 100644 scripts/skill_cooldown_hud.gd
- create mode 100644 scripts/skill_cooldown_hud.gd.uid
+ assets/tiles/ground_placeholder.png | Bin 0 -> 235 bytes
+ scenes/match.tscn                   |  15 +++++++++++++++
+ 2 files changed, 15 insertions(+)
+ create mode 100644 assets/tiles/ground_placeholder.png
 
+diff --git a/assets/tiles/ground_placeholder.png b/assets/tiles/ground_placeholder.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..ba1c3c2f325dba0a8cec0203b80139ed29f08ebd
+GIT binary patch
+literal 235
+zcmeAS@N?(olHy`uVBq!ia0vp^0YI$4!3HE-jsNEWsZE|Pjv*Cu-ri8;JLDk2`Y=4G
+z-%<F9+K$jU3}+QDT$N$!edHwZ<yF->28$2Yn?C=%p5h+z=kUW#zgceB-%FWyeb=JD
+zFFT%9Zfp9MJZZ|M?-Q>@P1_e=s{1wB;Y7m(Mnz^PwiX@^NdY5;6qrErr~O`EqCVBF
+z*t)3t!JfG%ZG@|<-#zX6w*52P+r8|E_Wp+{#L&ssvWNZ9UvbZQZme&!Zu|nep25@A
+K&t;ucLK6Tkcw(FY
+
+literal 0
+HcmV?d00001
+
+diff --git a/scenes/match.tscn b/scenes/match.tscn
+index d666772..331e6a5 100644
+--- a/scenes/match.tscn
++++ b/scenes/match.tscn
+@@ -2,8 +2,23 @@
+ 
+ [ext_resource type="Script" uid="uid://d0w2n82opvyca" path="res://scripts/match_manager.gd" id="1_t0cgm"]
+ [ext_resource type="Script" uid="uid://ycj8hjsdlglx" path="res://scripts/dining_table.gd" id="2_5rc6j"]
++[ext_resource type="Texture2D" path="res://assets/tiles/ground_placeholder.png" id="3_ground"]
++
++[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ground"]
++texture = ExtResource("3_ground")
++0:0/0 = 0
++1:0/0 = 0
++2:0/0 = 0
++3:0/0 = 0
++4:0/0 = 0
++0:1/0 = 0
++1:1/0 = 0
++2:1/0 = 0
++3:1/0 = 0
++4:1/0 = 0
+ 
+ [sub_resource type="TileSet" id="TileSet_q6ima"]
++sources/6 = SubResource("TileSetAtlasSource_ground")
+ 
+ [node name="root" type="Node2D" unique_id=1243528980]
+ script = ExtResource("1_t0cgm")
+-- 
+2.43.0
+
+From 07b0ae4130ffb0c493e89f9da4ae3cc117df0687 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 08:38:03 +0000
+Subject: [PATCH 2/3] Move map and lobby art out of scripts and into scene
+ nodes
+
+match.tscn: DiningTable position + visuals (Aura, TableTop), spawn markers and a
+Workbench (Area2D with ColorRect/Polygon2D/Label children) are now real nodes.
+lobby_room.tscn: room floor, floorboards, walls, rug, shelf, vending machine,
+contract board, emblem drawer, door and labels are nodes under Decor; interaction
+spots follow those nodes. Scripts keep only dynamic drawing (party slots, hero,
+prompt, food bar). Adds the imported placeholder tile atlas .import file.
+---
+ assets/tiles/ground_placeholder.png.import |  40 +++
+ scenes/lobby_room.tscn                     | 387 +++++++++++++++++++++
+ scenes/match.tscn                          |  61 ++++
+ scripts/dining_table.gd                    |   3 +-
+ scripts/lobby_room.gd                      |  76 +---
+ scripts/match_manager.gd                   |  13 +-
+ 6 files changed, 513 insertions(+), 67 deletions(-)
+ create mode 100644 assets/tiles/ground_placeholder.png.import
+
+diff --git a/assets/tiles/ground_placeholder.png.import b/assets/tiles/ground_placeholder.png.import
+new file mode 100644
+index 0000000..52afe55
+--- /dev/null
++++ b/assets/tiles/ground_placeholder.png.import
+@@ -0,0 +1,40 @@
++[remap]
++
++importer="texture"
++type="CompressedTexture2D"
++uid="uid://db4twgq312yhi"
++path="res://.godot/imported/ground_placeholder.png-f7ad9e13b3fae3bcb1f863928f1b418d.ctex"
++metadata={
++"vram_texture": false
++}
++
++[deps]
++
++source_file="res://assets/tiles/ground_placeholder.png"
++dest_files=["res://.godot/imported/ground_placeholder.png-f7ad9e13b3fae3bcb1f863928f1b418d.ctex"]
++
++[params]
++
++compress/mode=0
++compress/high_quality=false
++compress/lossy_quality=0.7
++compress/uastc_level=0
++compress/rdo_quality_loss=0.0
++compress/hdr_compression=1
++compress/normal_map=0
++compress/channel_pack=0
++mipmaps/generate=false
++mipmaps/limit=-1
++roughness/mode=0
++roughness/src_normal=""
++process/channel_remap/red=0
++process/channel_remap/green=1
++process/channel_remap/blue=2
++process/channel_remap/alpha=3
++process/fix_alpha_border=true
++process/premult_alpha=false
++process/normal_map_invert_y=false
++process/hdr_as_srgb=false
++process/hdr_clamp_exposure=false
++process/size_limit=0
++detect_3d/compress_to=1
+diff --git a/scenes/lobby_room.tscn b/scenes/lobby_room.tscn
+index f7954b9..a7e411c 100644
+--- a/scenes/lobby_room.tscn
++++ b/scenes/lobby_room.tscn
+@@ -4,3 +4,390 @@
+ 
+ [node name="LobbyRoom" type="Node2D" unique_id=1250080902]
+ script = ExtResource("1_lobby")
++
++[node name="Decor" type="Node2D" parent="."]
++z_index = -1
++
++[node name="Room" type="ColorRect" parent="Decor"]
++layout_mode = 0
++offset_left = 32
++offset_top = 32
++offset_right = 1120
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.8510, 0.7804, 0.6392, 1.0)
++
++[node name="Floorboards" type="Node2D" parent="Decor"]
++
++[node name="Board00" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 32
++offset_top = 32
++offset_right = 33
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board01" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 96
++offset_top = 32
++offset_right = 97
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board02" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 160
++offset_top = 32
++offset_right = 161
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board03" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 224
++offset_top = 32
++offset_right = 225
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board04" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 288
++offset_top = 32
++offset_right = 289
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board05" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 352
++offset_top = 32
++offset_right = 353
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board06" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 416
++offset_top = 32
++offset_right = 417
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board07" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 480
++offset_top = 32
++offset_right = 481
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board08" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 544
++offset_top = 32
++offset_right = 545
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board09" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 608
++offset_top = 32
++offset_right = 609
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board10" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 672
++offset_top = 32
++offset_right = 673
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board11" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 736
++offset_top = 32
++offset_right = 737
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board12" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 800
++offset_top = 32
++offset_right = 801
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board13" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 864
++offset_top = 32
++offset_right = 865
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board14" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 928
++offset_top = 32
++offset_right = 929
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board15" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 992
++offset_top = 32
++offset_right = 993
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Board16" type="ColorRect" parent="Decor/Floorboards"]
++layout_mode = 0
++offset_left = 1056
++offset_top = 32
++offset_right = 1057
++offset_bottom = 616
++mouse_filter = 2
++color = Color(0.0000, 0.0000, 0.0000, 0.05)
++
++[node name="Walls" type="Line2D" parent="Decor"]
++points = PackedVector2Array(32, 32, 1120, 32, 1120, 616, 32, 616)
++closed = true
++width = 10.0
++default_color = Color(0.3569, 0.2275, 0.1608, 1.0)
++
++[node name="Rug" type="Node2D" parent="Decor"]
++position = Vector2(536.0, 394.0)
++
++[node name="Fill" type="Polygon2D" parent="Decor/Rug"]
++color = Color(0.6510, 0.2941, 0.2941, 0.55)
++polygon = PackedVector2Array(190.00, 0.00, 183.53, 49.18, 164.54, 95.00, 134.35, 134.35, 95.00, 164.54, 49.18, 183.53, 0.00, 190.00, -49.18, 183.53, -95.00, 164.54, -134.35, 134.35, -164.54, 95.00, -183.53, 49.18, -190.00, 0.00, -183.53, -49.18, -164.54, -95.00, -134.35, -134.35, -95.00, -164.54, -49.18, -183.53, -0.00, -190.00, 49.18, -183.53, 95.00, -164.54, 134.35, -134.35, 164.54, -95.00, 183.53, -49.18)
++
++[node name="Edge" type="Line2D" parent="Decor/Rug"]
++points = PackedVector2Array(190.00, 0.00, 189.09, 18.62, 186.35, 37.07, 181.82, 55.15, 175.54, 72.71, 167.57, 89.57, 157.98, 105.56, 146.87, 120.53, 134.35, 134.35, 120.53, 146.87, 105.56, 157.98, 89.57, 167.57, 72.71, 175.54, 55.15, 181.82, 37.07, 186.35, 18.62, 189.09, 0.00, 190.00, -18.62, 189.09, -37.07, 186.35, -55.15, 181.82, -72.71, 175.54, -89.57, 167.57, -105.56, 157.98, -120.53, 146.87, -134.35, 134.35, -146.87, 120.53, -157.98, 105.56, -167.57, 89.57, -175.54, 72.71, -181.82, 55.15, -186.35, 37.07, -189.09, 18.62, -190.00, 0.00, -189.09, -18.62, -186.35, -37.07, -181.82, -55.15, -175.54, -72.71, -167.57, -89.57, -157.98, -105.56, -146.87, -120.53, -134.35, -134.35, -120.53, -146.87, -105.56, -157.98, -89.57, -167.57, -72.71, -175.54, -55.15, -181.82, -37.07, -186.35, -18.62, -189.09, -0.00, -190.00, 18.62, -189.09, 37.07, -186.35, 55.15, -181.82, 72.71, -175.54, 89.57, -167.57, 105.56, -157.98, 120.53, -146.87, 134.35, -134.35, 146.87, -120.53, 157.98, -105.56, 167.57, -89.57, 175.54, -72.71, 181.82, -55.15, 186.35, -37.07, 189.09, -18.62)
++closed = true
++width = 4.0
++default_color = Color(0.4902, 0.1843, 0.1843, 1.0)
++
++[node name="PartyTitle" type="Label" parent="Decor/Rug"]
++layout_mode = 0
++offset_left = -60
++offset_top = -166
++theme_override_colors/font_color = Color(0.2314, 0.1137, 0.1137, 1.0)
++theme_override_font_sizes/font_size = 16
++text = "YOUR PARTY"
++
++[node name="Shelf" type="Node2D" parent="Decor"]
++position = Vector2(202, 92)
++
++[node name="Body" type="ColorRect" parent="Decor/Shelf"]
++layout_mode = 0
++offset_left = -110
++offset_top = -30
++offset_right = 110
++offset_bottom = 40
++mouse_filter = 2
++color = Color(0.4824, 0.2902, 0.1647, 1.0)
++
++[node name="Name" type="Label" parent="Decor/Shelf"]
++layout_mode = 0
++offset_left = -100
++offset_top = 46
++theme_override_colors/font_color = Color(0.2314, 0.1647, 0.1137, 1.0)
++theme_override_font_sizes/font_size = 11
++text = "CHARACTER SHELF"
++
++[node name="Gacha" type="Node2D" parent="Decor"]
++position = Vector2(576.0, 92)
++
++[node name="Body" type="ColorRect" parent="Decor/Gacha"]
++layout_mode = 0
++offset_left = -34
++offset_top = -44
++offset_right = 34
++offset_bottom = 48
++mouse_filter = 2
++color = Color(0.7529, 0.2235, 0.1686, 1.0)
++
++[node name="Screen" type="ColorRect" parent="Decor/Gacha"]
++layout_mode = 0
++offset_left = -24
++offset_top = -34
++offset_right = 24
++offset_bottom = 10
++mouse_filter = 2
++color = Color(0.9922, 0.9216, 0.8157, 1.0)
++
++[node name="Coin" type="Polygon2D" parent="Decor/Gacha"]
++position = Vector2(0, 30)
++color = Color(0.9569, 0.8157, 0.2471, 1.0)
++polygon = PackedVector2Array(7.00, 0.00, 6.76, 1.81, 6.06, 3.50, 4.95, 4.95, 3.50, 6.06, 1.81, 6.76, 0.00, 7.00, -1.81, 6.76, -3.50, 6.06, -4.95, 4.95, -6.06, 3.50, -6.76, 1.81, -7.00, 0.00, -6.76, -1.81, -6.06, -3.50, -4.95, -4.95, -3.50, -6.06, -1.81, -6.76, -0.00, -7.00, 1.81, -6.76, 3.50, -6.06, 4.95, -4.95, 6.06, -3.50, 6.76, -1.81)
++
++[node name="Name" type="Label" parent="Decor/Gacha"]
++layout_mode = 0
++offset_left = -60
++offset_top = 52
++theme_override_colors/font_color = Color(0.2314, 0.1647, 0.1137, 1.0)
++theme_override_font_sizes/font_size = 11
++text = "GACHA VENDING MACHINE"
++
++[node name="Board" type="Node2D" parent="Decor"]
++position = Vector2(890, 87)
++
++[node name="Body" type="ColorRect" parent="Decor/Board"]
++layout_mode = 0
++offset_left = -70
++offset_top = -38
++offset_right = 70
++offset_bottom = 38
++mouse_filter = 2
++color = Color(0.6902, 0.4902, 0.3098, 1.0)
++
++[node name="Note1" type="ColorRect" parent="Decor/Board"]
++layout_mode = 0
++offset_left = -60
++offset_top = -28
++offset_right = -28
++offset_bottom = -2
++mouse_filter = 2
++color = Color(1.0000, 0.9843, 0.9020, 1.0)
++
++[node name="Note2" type="ColorRect" parent="Decor/Board"]
++layout_mode = 0
++offset_left = -16
++offset_top = -28
++offset_right = 16
++offset_bottom = -2
++mouse_filter = 2
++color = Color(1.0000, 0.9843, 0.9020, 1.0)
++
++[node name="Note3" type="ColorRect" parent="Decor/Board"]
++layout_mode = 0
++offset_left = 28
++offset_top = -28
++offset_right = 60
++offset_bottom = -2
++mouse_filter = 2
++color = Color(1.0000, 0.9843, 0.9020, 1.0)
++
++[node name="Name" type="Label" parent="Decor/Board"]
++layout_mode = 0
++offset_left = -62
++offset_top = 42
++theme_override_colors/font_color = Color(0.2314, 0.1647, 0.1137, 1.0)
++theme_override_font_sizes/font_size = 11
++text = "CONTRACT BOARD"
++
++[node name="Drawer" type="Node2D" parent="Decor"]
++position = Vector2(112, 546)
++
++[node name="Body" type="ColorRect" parent="Decor/Drawer"]
++layout_mode = 0
++offset_left = -60
++offset_top = -30
++offset_right = 60
++offset_bottom = 34
++mouse_filter = 2
++color = Color(0.5569, 0.4314, 0.3255, 1.0)
++
++[node name="Drawer1" type="ColorRect" parent="Decor/Drawer"]
++layout_mode = 0
++offset_left = -52
++offset_top = -24
++offset_right = 52
++offset_bottom = -10
++mouse_filter = 2
++color = Color(0.6471, 0.5176, 0.4078, 1.0)
++
++[node name="Drawer2" type="ColorRect" parent="Decor/Drawer"]
++layout_mode = 0
++offset_left = -52
++offset_top = -4
++offset_right = 52
++offset_bottom = 10
++mouse_filter = 2
++color = Color(0.6471, 0.5176, 0.4078, 1.0)
++
++[node name="Drawer3" type="ColorRect" parent="Decor/Drawer"]
++layout_mode = 0
++offset_left = -52
++offset_top = 16
++offset_right = 52
++offset_bottom = 30
++mouse_filter = 2
++color = Color(0.6471, 0.5176, 0.4078, 1.0)
++
++[node name="Name" type="Label" parent="Decor/Drawer"]
++layout_mode = 0
++offset_left = -56
++offset_top = 38
++theme_override_colors/font_color = Color(0.2314, 0.1647, 0.1137, 1.0)
++theme_override_font_sizes/font_size = 11
++text = "EMBLEM DRAWER"
++
++[node name="Door" type="Node2D" parent="Decor"]
++position = Vector2(1106, 324.0)
++
++[node name="Light" type="ColorRect" parent="Decor/Door"]
++layout_mode = 0
++offset_left = -10
++offset_top = -64
++offset_right = 24
++offset_bottom = 64
++mouse_filter = 2
++color = Color(0.2431, 0.5569, 0.2549, 0.55)
++
++[node name="Body" type="ColorRect" parent="Decor/Door"]
++layout_mode = 0
++offset_left = -24
++offset_top = -60
++offset_right = 2
++offset_bottom = 60
++mouse_filter = 2
++color = Color(0.5412, 0.3529, 0.1686, 1.0)
++
++[node name="Knob" type="Polygon2D" parent="Decor/Door"]
++position = Vector2(-8, 4)
++color = Color(0.9569, 0.8157, 0.2471, 1.0)
++polygon = PackedVector2Array(4.00, 0.00, 3.86, 1.04, 3.46, 2.00, 2.83, 2.83, 2.00, 3.46, 1.04, 3.86, 0.00, 4.00, -1.04, 3.86, -2.00, 3.46, -2.83, 2.83, -3.46, 2.00, -3.86, 1.04, -4.00, 0.00, -3.86, -1.04, -3.46, -2.00, -2.83, -2.83, -2.00, -3.46, -1.04, -3.86, -0.00, -4.00, 1.04, -3.86, 2.00, -3.46, 2.83, -2.83, 3.46, -2.00, 3.86, -1.04)
++
++[node name="Sign" type="Label" parent="Decor/Door"]
++layout_mode = 0
++offset_left = -190
++offset_top = -92
++offset_right = -10
++offset_bottom = -69
++theme_override_colors/font_color = Color(0.1686, 0.3020, 0.1725, 1.0)
++theme_override_font_sizes/font_size = 15
++text = "OUTSIDE ▶ LOBBY"
++horizontal_alignment = 2
++
++[node name="Help" type="Label" parent="Decor"]
++layout_mode = 0
++offset_left = 46
++offset_top = 588
++theme_override_colors/font_color = Color(0.2314, 0.1647, 0.1137, 1.0)
++theme_override_font_sizes/font_size = 13
++text = "WASD move   ·   F interact   ·   Esc close"
+diff --git a/scenes/match.tscn b/scenes/match.tscn
+index 331e6a5..ed6f5e9 100644
+--- a/scenes/match.tscn
++++ b/scenes/match.tscn
+@@ -33,13 +33,74 @@ tile_set = SubResource("TileSet_q6ima")
+ [node name="Kitchen" type="Node2D" parent="." unique_id=869032037]
+ 
+ [node name="DiningTable" type="Area2D" parent="Kitchen" unique_id=334444010]
++position = Vector2(640, 360)
+ script = ExtResource("2_5rc6j")
+ 
++[node name="Aura" type="Polygon2D" parent="Kitchen/DiningTable"]
++show_behind_parent = true
++color = Color(0.3020, 1.0000, 0.4000, 0.06)
++polygon = PackedVector2Array(156.00, 0.00, 150.68, 40.38, 135.10, 78.00, 110.31, 110.31, 78.00, 135.10, 40.38, 150.68, 0.00, 156.00, -40.38, 150.68, -78.00, 135.10, -110.31, 110.31, -135.10, 78.00, -150.68, 40.38, -156.00, 0.00, -150.68, -40.38, -135.10, -78.00, -110.31, -110.31, -78.00, -135.10, -40.38, -150.68, -0.00, -156.00, 40.38, -150.68, 78.00, -135.10, 110.31, -110.31, 135.10, -78.00, 150.68, -40.38)
++
++[node name="TableTop" type="ColorRect" parent="Kitchen/DiningTable"]
++show_behind_parent = true
++layout_mode = 0
++offset_left = -60
++offset_top = -36
++offset_right = 60
++offset_bottom = 36
++mouse_filter = 2
++color = Color(0.4824, 0.2902, 0.1647, 1.0)
+ [node name="SpawnLeft" type="Marker2D" parent="Kitchen" unique_id=607238593]
++position = Vector2(50, 360)
+ 
+ [node name="SpawnTop" type="Marker2D" parent="Kitchen" unique_id=314747375]
++position = Vector2(640, 50)
+ 
+ [node name="SpawnBottom" type="Marker2D" parent="Kitchen" unique_id=1581751431]
++position = Vector2(640, 670)
++
++[node name="Workbench" type="Area2D" parent="Kitchen"]
++position = Vector2(880, 190)
++
++[node name="Body" type="ColorRect" parent="Kitchen/Workbench"]
++layout_mode = 0
++offset_left = -46
++offset_top = -24
++offset_right = 46
++offset_bottom = 24
++mouse_filter = 2
++color = Color(0.5412, 0.4275, 0.2314, 1.0)
++
++[node name="Top" type="ColorRect" parent="Kitchen/Workbench"]
++layout_mode = 0
++offset_left = -46
++offset_top = -24
++offset_right = 46
++offset_bottom = -14
++mouse_filter = 2
++color = Color(0.6902, 0.5529, 0.3412, 1.0)
++
++[node name="Tool" type="Polygon2D" parent="Kitchen/Workbench"]
++position = Vector2(-24, 6)
++color = Color(0.7529, 0.2235, 0.1686, 1.0)
++polygon = PackedVector2Array(7.00, 0.00, 6.76, 1.81, 6.06, 3.50, 4.95, 4.95, 3.50, 6.06, 1.81, 6.76, 0.00, 7.00, -1.81, 6.76, -3.50, 6.06, -4.95, 4.95, -6.06, 3.50, -6.76, 1.81, -7.00, 0.00, -6.76, -1.81, -6.06, -3.50, -4.95, -4.95, -3.50, -6.06, -1.81, -6.76, -0.00, -7.00, 1.81, -6.76, 3.50, -6.06, 4.95, -4.95, 6.06, -3.50, 6.76, -1.81)
++
++[node name="Metal" type="ColorRect" parent="Kitchen/Workbench"]
++layout_mode = 0
++offset_left = 4
++offset_top = 0
++offset_right = 34
++offset_bottom = 10
++mouse_filter = 2
++color = Color(0.5843, 0.6471, 0.6510, 1.0)
++
++[node name="Sign" type="Label" parent="Kitchen/Workbench"]
++layout_mode = 0
++offset_left = -44
++offset_top = 28
++theme_override_colors/font_color = Color(1.0000, 1.0000, 1.0000, 1.0)
++theme_override_font_sizes/font_size = 12
++text = "WORKBENCH  [F]"
+ 
+ [node name="Players" type="Node2D" parent="." unique_id=1996468302]
+ 
+diff --git a/scripts/dining_table.gd b/scripts/dining_table.gd
+index 8499e15..b110367 100644
+--- a/scripts/dining_table.gd
++++ b/scripts/dining_table.gd
+@@ -45,8 +45,7 @@ func food_pct() -> float:
+ 
+ 
+ func _draw() -> void:
+-	draw_circle(Vector2.ZERO, radius + GameData.TABLE_AURA_RADIUS, Color(0.3, 1.0, 0.4, 0.06))
+-	draw_rect(Rect2(-radius, -radius * 0.6, radius * 2.0, radius * 1.2), Color("7b4a2a"))
++	# Static art (aura circle + table top) lives in the scene as child nodes: Aura / TableTop.
+ 	draw_rect(Rect2(-radius, -radius * 0.6 - 14, radius * 2.0, 8), Color(0, 0, 0, 0.6))
+ 	draw_rect(Rect2(-radius, -radius * 0.6 - 14, radius * 2.0 * food_pct(), 8), Color.ORANGE)
+ 	if invulnerable:
+diff --git a/scripts/lobby_room.gd b/scripts/lobby_room.gd
+index dd59ce7..b480ee1 100644
+--- a/scripts/lobby_room.gd
++++ b/scripts/lobby_room.gd
+@@ -5,7 +5,9 @@ extends Node2D
+ ##   Vending Machine      -> gacha (placeholder panel)
+ ##   Contract Board       -> daily/weekly Exterminator contracts (placeholder panel)
+ ##   Emblem Drawer        -> emblem page (placeholder panel)
+-## The rug shows your party (humans + bots). Everything is drawn in code – no art or child nodes needed.
++## The rug shows your party (humans + bots). The room, rug, furniture and labels are real nodes under
++## Decor in scenes/lobby_room.tscn (move them in the 2D editor); only the dynamic bits (party slots, hero,
++## prompt) are drawn here in code.
+ 
+ const SPEED := 230.0
+ 
+@@ -30,16 +32,16 @@ var _char_info: Label
+ 
+ 
+ func _ready() -> void:
+-	var vs := get_viewport_rect().size
+-	room = Rect2(32, 32, vs.x - 64, vs.y - 64)
++	var floor_rect: ColorRect = $Decor/Room
++	room = Rect2(floor_rect.global_position, floor_rect.size)
+ 	hero = room.get_center() + Vector2(0, 150)
+-	var cy := room.get_center().y
++	# interaction spots follow the furniture nodes in the scene
+ 	spots = {
+-		"door":    {"pos": Vector2(room.end.x - 14, cy), "r": 70.0, "text": "Go outside – lobby management"},
+-		"shelf":   {"pos": room.position + Vector2(170, 60), "r": 60.0, "text": "Character Shelf"},
+-		"gacha":   {"pos": Vector2(room.get_center().x, room.position.y + 60), "r": 60.0, "text": "Gacha Vending Machine"},
+-		"board":   {"pos": Vector2(room.end.x - 230, room.position.y + 55), "r": 60.0, "text": "Contract Board"},
+-		"drawer":  {"pos": Vector2(room.position.x + 80, room.end.y - 70), "r": 60.0, "text": "Emblem Drawer"},
++		"door":    {"pos": $Decor/Door.global_position,   "r": 70.0, "text": "Go outside – lobby management"},
++		"shelf":   {"pos": $Decor/Shelf.global_position,  "r": 60.0, "text": "Character Shelf"},
++		"gacha":   {"pos": $Decor/Gacha.global_position,  "r": 60.0, "text": "Gacha Vending Machine"},
++		"board":   {"pos": $Decor/Board.global_position,  "r": 60.0, "text": "Contract Board"},
++		"drawer":  {"pos": $Decor/Drawer.global_position, "r": 60.0, "text": "Emblem Drawer"},
+ 	}
+ 	ui.layer = 10
+ 	add_child(ui)
+@@ -61,6 +63,7 @@ func _process(delta: float) -> void:
+ 		var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+ 		hero += dir * SPEED * delta
+ 		hero = hero.clamp(room.position + Vector2(24, 24), room.end - Vector2(24, 24))
++	$Decor/Door/Sign.text = "OUTSIDE ▶ %s" % Network.room_code if Network.in_room() else "OUTSIDE ▶ LOBBY"
+ 	near_id = ""
+ 	var best := INF
+ 	for id in spots:
+@@ -81,16 +84,9 @@ func _unhandled_input(event: InputEvent) -> void:
+ # ------------------------------------------------------------------ drawing
+ func _draw() -> void:
+ 	var f := ThemeDB.fallback_font
+-	draw_rect(room, Color("d9c7a3"))                                       # floor
+-	for i in range(0, int(room.size.x), 64):                               # floorboards
+-		draw_line(room.position + Vector2(i, 0), room.position + Vector2(i, room.size.y), Color(0, 0, 0, 0.05), 1.0)
+-	draw_rect(room, Color("5b3a29"), false, 10.0)                          # walls
+-
+-	# rug + party slots
+-	var rc := room.get_center() + Vector2(-40, 70)
+-	draw_circle(rc, 190.0, Color("a64b4b", 0.55))
+-	draw_arc(rc, 190.0, 0.0, TAU, 64, Color("7d2f2f"), 4.0)
+-	draw_string(f, rc + Vector2(-60, -150), "YOUR PARTY", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("3b1d1d"))
++
++	# party slots on the rug (the rug itself is the Decor/Rug node)
++	var rc: Vector2 = $Decor/Rug.global_position
+ 	var ids: Array = Network.players.keys()
+ 	for i in GameData.MAX_PLAYERS:
+ 		var p := rc + Vector2(-110 + 110 * i, 0)
+@@ -105,44 +101,12 @@ func _draw() -> void:
+ 			draw_arc(p, 22.0, 0.0, TAU, 24, Color(0, 0, 0, 0.35), 2.0)
+ 			draw_string(f, p + Vector2(-48, 6), "empty", HORIZONTAL_ALIGNMENT_CENTER, 96, 12, Color(0, 0, 0, 0.4))
+ 
+-	# character shelf (top-left)
++	# one dot per character on the shelf (data-driven, so drawn here)
+ 	var s: Vector2 = spots.shelf.pos
+-	draw_rect(Rect2(s + Vector2(-110, -30), Vector2(220, 70)), Color("7b4a2a"))
+ 	var k := 0
+ 	for id in GameData.CHARACTERS:
+ 		draw_circle(s + Vector2(-90 + 20 * k, 4), 8.0, GameData.CHARACTERS[id].color)
+ 		k += 1
+-	_label(f, s + Vector2(-100, 60), "CHARACTER SHELF")
+-
+-	# vending machine (top-middle)
+-	var g: Vector2 = spots.gacha.pos
+-	draw_rect(Rect2(g + Vector2(-34, -44), Vector2(68, 92)), Color("c0392b"))
+-	draw_rect(Rect2(g + Vector2(-24, -34), Vector2(48, 44)), Color("fdebd0"))
+-	draw_circle(g + Vector2(0, 30), 7.0, Color("f4d03f"))
+-	_label(f, g + Vector2(-60, 66), "GACHA VENDING MACHINE")
+-
+-	# contract board (top-right)
+-	var b: Vector2 = spots.board.pos
+-	draw_rect(Rect2(b + Vector2(-70, -38), Vector2(140, 76)), Color("b07d4f"))
+-	draw_rect(Rect2(b + Vector2(-60, -28), Vector2(32, 26)), Color("fffbe6"))
+-	draw_rect(Rect2(b + Vector2(-16, -28), Vector2(32, 26)), Color("fffbe6"))
+-	draw_rect(Rect2(b + Vector2(28, -28), Vector2(32, 26)), Color("fffbe6"))
+-	_label(f, b + Vector2(-62, 56), "CONTRACT BOARD")
+-
+-	# emblem drawer (bottom-left)
+-	var d: Vector2 = spots.drawer.pos
+-	draw_rect(Rect2(d + Vector2(-60, -30), Vector2(120, 64)), Color("8e6e53"))
+-	for j in 3:
+-		draw_rect(Rect2(d + Vector2(-52, -24 + 20 * j), Vector2(104, 14)), Color("a58468"))
+-	_label(f, d + Vector2(-56, 52), "EMBLEM DRAWER")
+-
+-	# door to the outside (right wall)
+-	var dr: Vector2 = spots.door.pos
+-	draw_rect(Rect2(dr + Vector2(-10, -64), Vector2(34, 128)), Color("3e8e41", 0.55))   # light from outside
+-	draw_rect(Rect2(dr + Vector2(-24, -60), Vector2(26, 120)), Color("8a5a2b"))
+-	draw_circle(dr + Vector2(-8, 4), 4.0, Color("f4d03f"))
+-	var sign_text := "OUTSIDE ▶ %s" % Network.room_code if Network.in_room() else "OUTSIDE ▶ LOBBY"
+-	draw_string(f, dr + Vector2(-190, -76), sign_text, HORIZONTAL_ALIGNMENT_RIGHT, 180, 15, Color("2b4d2c"))
+ 
+ 	# hero
+ 	var me: Dictionary = GameData.CHARACTERS[Network.local_profile.char_id]
+@@ -150,18 +114,12 @@ func _draw() -> void:
+ 	draw_arc(hero, 14.0, 0.0, TAU, 24, Color.WHITE, 2.0)
+ 	draw_string(f, hero + Vector2(-40, -22), "You", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.BLACK)
+ 
+-	# prompt + help
++	# interaction prompt
+ 	if near_id != "" and panel_open == "":
+ 		var sp: Dictionary = spots[near_id]
+ 		var tp: Vector2 = hero + Vector2(-110, -42)
+ 		draw_rect(Rect2(tp + Vector2(-6, -16), Vector2(236, 24)), Color(0, 0, 0, 0.65))
+ 		draw_string(f, tp, "[F] %s" % sp.text, HORIZONTAL_ALIGNMENT_LEFT, 230, 14, Color.WHITE)
+-	draw_string(f, room.position + Vector2(14, room.size.y - 12), "WASD move   ·   F interact   ·   Esc close",
+-		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("3b2a1d"))
+-
+-
+-func _label(f: Font, pos: Vector2, text: String) -> void:
+-	draw_string(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("3b2a1d"))
+ 
+ 
+ # ------------------------------------------------------------------ panels
 diff --git a/scripts/match_manager.gd b/scripts/match_manager.gd
-index 8a13803..69a6f02 100644
+index 69a6f02..5353ed5 100644
 --- a/scripts/match_manager.gd
 +++ b/scripts/match_manager.gd
-@@ -394,6 +394,9 @@ func _build_hud() -> void:
- 	_hud = Label.new()
- 	_hud.position = Vector2(12, 8)
- 	layer.add_child(_hud)
-+	var cd_hud := SkillCooldownHUD.new()
-+	cd_hud.setup(self)
-+	layer.add_child(cd_hud)
- 	add_child(layer)
+@@ -64,10 +64,10 @@ func _ready() -> void:
  
  
-diff --git a/scripts/player.gd b/scripts/player.gd
-index 0228da3..3fba75b 100644
---- a/scripts/player.gd
-+++ b/scripts/player.gd
-@@ -28,7 +28,8 @@ var aim := Vector2.RIGHT
- var move_mult := 1.0
- var stun_until := 0.0
- 
--var cd := {1: 0.0, 2: 0.0}
-+var cd := {1: 0.0, 2: 0.0}          # seconds left on skill 1 / 2 (server is the source of truth)
-+var cd_max := {1: 1.0, 2: 1.0}      # length of the cooldown that is currently running (for the HUD circles)
- var atk_cd := 0.0
- var next_crits := 0
- var attack_count := 0
-@@ -124,6 +125,9 @@ func _physics_process(delta: float) -> void:
- 		_local_input(delta)
- 	if multiplayer.is_server():
- 		_server_tick(delta)
-+	else:
-+		cd[1] = maxf(0.0, cd[1] - delta)       # client mirror of the server's cooldowns (HUD only)
-+		cd[2] = maxf(0.0, cd[2] - delta)
- 	for f in _fx:
- 		f.t -= delta
- 	_fx = _fx.filter(func(f): return f.t > 0.0)
-@@ -155,6 +159,37 @@ func _to_server(method: StringName, args: Array) -> void:
- 		callv("rpc_id", [1, method] + args)
+ func _layout_world() -> void:
+-	table.position = KITCHEN_CENTER
+-	$Kitchen/SpawnLeft.position = Vector2(50, 360)       # Pantry cabinets / fridge
+-	$Kitchen/SpawnTop.position = Vector2(640, 50)        # Ceiling vents / sink drain
+-	$Kitchen/SpawnBottom.position = Vector2(640, 670)    # Floorboards / trash chute
++	# Positions now live in scenes/match.tscn – move the nodes in the 2D editor:
++	#   Kitchen/DiningTable, Kitchen/Workbench, Kitchen/SpawnLeft (pantry/fridge),
++	#   Kitchen/SpawnTop (vents/sink drain), Kitchen/SpawnBottom (floorboards/trash chute).
++	pass
+ 	# TODO(yard): procedural yard – generate obstacles from a seed shared via RPC.
  
  
-+## SERVER: start (or replace) a skill cooldown and tell the owning player so the HUD circle follows it.
-+func start_cd(slot: int, secs: float) -> void:
-+	cd[slot] = secs
-+	cd_max[slot] = maxf(secs, 0.01)
-+	_push_cd()
-+
-+
-+func _push_cd() -> void:
-+	if is_bot:
-+		return
-+	if peer_id == multiplayer.get_unique_id():
-+		net_cd(cd[1], cd[2], cd_max[1], cd_max[2])          # host's own player: no network hop
-+	else:
-+		rpc_id(peer_id, "net_cd", cd[1], cd[2], cd_max[1], cd_max[2])
-+
-+
-+@rpc("any_peer", "call_local", "reliable")
-+func net_cd(left1: float, left2: float, max1: float, max2: float) -> void:
-+	if not _from_server():
-+		return
-+	cd = {1: left1, 2: left2}
-+	cd_max = {1: max1, 2: max2}
-+
-+
-+## 0.0 = just used, 1.0 = ready again (what the HUD circles show).
-+func cd_fill(slot: int) -> float:
-+	if cd[slot] <= 0.0:
-+		return 1.0
-+	return clampf(1.0 - cd[slot] / cd_max[slot], 0.0, 1.0)
-+
-+
- func _server_tick(delta: float) -> void:
- 	_item_tick(delta)
- 	atk_cd = maxf(0.0, atk_cd - delta)
-@@ -231,6 +266,7 @@ func server_damage(amount: float, _source: Node = null) -> void:
- 		_mitt_icd = _now() + 1.0
- 		cd[1] = maxf(0.0, cd[1] - 0.5)
- 		cd[2] = maxf(0.0, cd[2] - 0.5)
-+		_push_cd()
- 	if shield > 0.0:
- 		var absorbed := minf(shield, amount)
- 		shield -= absorbed
-diff --git a/scripts/skill_cooldown_hud.gd b/scripts/skill_cooldown_hud.gd
-new file mode 100644
-index 0000000..63b3b1e
---- /dev/null
-+++ b/scripts/skill_cooldown_hud.gd
-@@ -0,0 +1,60 @@
-+class_name SkillCooldownHUD
-+extends Control
-+## Two circles at the bottom-centre of the screen, one per skill ([Q] and [E]).
-+## Each circle fills clockwise from the top as the cooldown runs; when it is full the
-+## skill is ready (bright ring + key letter). While cooling down it shows the seconds left.
-+
-+const RADIUS := 34.0
-+const SPACING := 150.0
-+const BOTTOM_MARGIN := 62.0
-+const KEYS := {1: "Q", 2: "E"}
-+const COL_BG := Color(0.08, 0.08, 0.10, 0.75)
-+const COL_FILL := Color(0.30, 0.65, 1.00, 0.85)
-+const COL_READY := Color(0.35, 0.90, 0.45, 1.0)
-+
-+var mm: MatchManager
-+
-+
-+func setup(match_manager: MatchManager) -> void:
-+	mm = match_manager
-+	set_anchors_preset(Control.PRESET_FULL_RECT)
-+	mouse_filter = Control.MOUSE_FILTER_IGNORE
-+
-+
-+func _process(_d: float) -> void:
-+	queue_redraw()
-+
-+
-+func _draw() -> void:
-+	var me := mm.local_player() if mm != null else null
-+	if me == null:
-+		return
-+	var def: Dictionary = GameData.CHARACTERS[me.char_id]
-+	var font := ThemeDB.fallback_font
-+	var mid := Vector2(size.x * 0.5, size.y - BOTTOM_MARGIN)
-+	for slot in [1, 2]:
-+		var c := mid + Vector2((slot - 1.5) * SPACING, 0.0)
-+		var fill: float = me.cd_fill(slot)
-+		var ready: bool = me.cd[slot] <= 0.0
-+		draw_circle(c, RADIUS, COL_BG)
-+		if ready:
-+			draw_circle(c, RADIUS - 3.0, Color(COL_READY, 0.35))
-+		elif fill > 0.0:
-+			draw_colored_polygon(_pie(c, RADIUS - 3.0, fill), COL_FILL)
-+		draw_arc(c, RADIUS, 0.0, TAU, 48, COL_READY if ready else Color(1, 1, 1, 0.55), 3.0, true)
-+		var label: String = KEYS[slot] if ready else "%.1f" % float(me.cd[slot])
-+		draw_string(font, c + Vector2(-RADIUS, 8.0), label, HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 22, Color.WHITE)
-+		var sname: String = def["skill%d" % slot].name
-+		draw_string(font, c + Vector2(-75.0, RADIUS + 18.0), sname, HORIZONTAL_ALIGNMENT_CENTER, 150.0, 12, Color(1, 1, 1, 0.85))
-+		if not ready:
-+			draw_string(font, c + Vector2(-RADIUS, -RADIUS - 6.0), KEYS[slot], HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 13, Color(1, 1, 1, 0.7))
-+
-+
-+## Filled wedge starting at 12 o'clock going clockwise; fraction 0..1.
-+static func _pie(center: Vector2, r: float, fraction: float) -> PackedVector2Array:
-+	var pts := PackedVector2Array([center])
-+	var steps := maxi(2, int(48.0 * fraction))
-+	for i in steps + 1:
-+		var a := -PI * 0.5 + TAU * fraction * float(i) / float(steps)
-+		pts.append(center + Vector2(cos(a), sin(a)) * r)
-+	return pts
-diff --git a/scripts/skill_cooldown_hud.gd.uid b/scripts/skill_cooldown_hud.gd.uid
-new file mode 100644
-index 0000000..b502d8a
---- /dev/null
-+++ b/scripts/skill_cooldown_hud.gd.uid
-@@ -0,0 +1 @@
-+uid://cakfereyyblj1
-diff --git a/scripts/skills.gd b/scripts/skills.gd
-index d7cd13d..7fe57e0 100644
---- a/scripts/skills.gd
-+++ b/scripts/skills.gd
-@@ -11,7 +11,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
- 	if p.dead or p.cd[slot] > 0.0:
- 		return
- 	var def: Dictionary = GameData.CHARACTERS[p.char_id]["skill%d" % slot]
--	p.cd[slot] = def.cd * (1.0 - p.cdr())
-+	p.start_cd(slot, def.cd * (1.0 - p.cdr()))
- 	if p.has_item("overclocked_igniter"):
- 		p.empowered = true                    # next basic attack deals +50%
- 	var pos := p.global_position
-@@ -94,7 +94,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
- 				if e.global_position.distance_to(pos) <= def.range and (best == null or e.hp > best.hp):
- 					best = e
- 			if best == null:
--				p.cd[slot] = 0.5   # no target -> refund
-+				p.start_cd(slot, 0.5)   # no target -> refund
- 				return
- 			p.rpc("net_teleport", best.global_position - best.face * 36.0)
- 			p.next_crits = def.crits
+@@ -431,8 +431,9 @@ func _build_workbench() -> void:
+ 		$Kitchen.add_child(workbench)
+ 	if workbench.position == Vector2.ZERO:
+ 		workbench.position = KITCHEN_CENTER + Vector2(240, -170)
+-	workbench.draw.connect(_draw_workbench)
+-	workbench.queue_redraw()
++	if workbench.get_child_count() == 0:        # no art in the scene -> fall back to the code-drawn bench
++		workbench.draw.connect(_draw_workbench)
++		workbench.queue_redraw()
+ 	wb_ui = WorkbenchUI.new()
+ 	add_child(wb_ui)
+ 	wb_ui.setup(self)
+-- 
+2.43.0
+
+From b94134dcb17f3b99328aeaaf867117463c9ab7ef Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 08:38:46 +0000
+Subject: [PATCH 3/3] Use 32px tiles for the Ground TileSet (matches the 3
+ tiles = 96px aura comment and the kitchen layout)
+
+---
+ assets/tiles/ground_placeholder.png | Bin 235 -> 339 bytes
+ scenes/match.tscn                   |   2 ++
+ 2 files changed, 2 insertions(+)
+
+diff --git a/assets/tiles/ground_placeholder.png b/assets/tiles/ground_placeholder.png
+index ba1c3c2f325dba0a8cec0203b80139ed29f08ebd..dfb4632e6c7288c04f3e408dbcb96dcdac103f2a 100644
+GIT binary patch
+literal 339
+zcmeAS@N?(olHy`uVBq!ia0vp^3xL>xgAGW|?XFqRz`!Ww>EaktG3V`_g}y9-B5fCU
+zr`WRjPMG|_Es$}R(uLKUOue_-t}Sq1znt~Jgn&cp&*rfGo4&{Y{^85F51((5)4%`p
+zPtDzRFaMn`wz8jpd(u1k^t5S9E01i;O|HNH+x(=_A3+68#z{hy5?1H_#Cxu~asU0l
+z#MtX!>>hmm7j^FZ%D=xY_20kzcl>qiuJ?8eYQHny)Te@7K*xS(e7pSj{xha-uF`i~
+R{DFbR;OXk;vd$@?2>_IHdEWp4
+
+literal 235
+zcmeAS@N?(olHy`uVBq!ia0vp^0YI$4!3HE-jsNEWsZE|Pjv*Cu-ri8;JLDk2`Y=4G
+z-%<F9+K$jU3}+QDT$N$!edHwZ<yF->28$2Yn?C=%p5h+z=kUW#zgceB-%FWyeb=JD
+zFFT%9Zfp9MJZZ|M?-Q>@P1_e=s{1wB;Y7m(Mnz^PwiX@^NdY5;6qrErr~O`EqCVBF
+z*t)3t!JfG%ZG@|<-#zX6w*52P+r8|E_Wp+{#L&ssvWNZ9UvbZQZme&!Zu|nep25@A
+K&t;ucLK6Tkcw(FY
+
+diff --git a/scenes/match.tscn b/scenes/match.tscn
+index ed6f5e9..27fe7fe 100644
+--- a/scenes/match.tscn
++++ b/scenes/match.tscn
+@@ -6,6 +6,7 @@
+ 
+ [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ground"]
+ texture = ExtResource("3_ground")
++texture_region_size = Vector2i(32, 32)
+ 0:0/0 = 0
+ 1:0/0 = 0
+ 2:0/0 = 0
+@@ -18,6 +19,7 @@ texture = ExtResource("3_ground")
+ 4:1/0 = 0
+ 
+ [sub_resource type="TileSet" id="TileSet_q6ima"]
++tile_size = Vector2i(32, 32)
+ sources/6 = SubResource("TileSetAtlasSource_ground")
+ 
+ [node name="root" type="Node2D" unique_id=1243528980]
 -- 
 2.43.0
 
