@@ -1,198 +1,206 @@
-From d4a08e52f74480f8992bb2d1b35cac866a8d73b2 Mon Sep 17 00:00:00 2001
+From 57a44e90d011bc51968abbdab20161c278a543f2 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Fri, 23 Oct 2026 02:11:35 +0000
-Subject: [PATCH] Fix workbench / item building so the project compiles and
- runs on Godot 4.7.2
+Date: Fri, 23 Oct 2026 02:47:14 +0000
+Subject: [PATCH] Add skill cooldown HUD: two circles (Q/E) that fill as
+ cooldowns run
 
-The workbench, item and bot code from the last update had never been run in
-Godot. Opening the project failed with 12 GDScript parse errors ("Cannot infer
-the type of ... because the value doesn't have a set type"), which also stopped
-lobby_room.gd and everything depending on it from loading.
-
-Parse fixes (explicit types on values read from untyped Dictionaries):
-- bot_brain.gd: line telegraph end point, cone telegraph vector
-- lobby_room.gd: party roster key list
-- player.gd: _sync_move_mult
-- enemy.gd: nearest-target distance, attack damage, forks end point,
-  telegraph progress, line telegraph normal
-- skills.gd: dash_zone destination
-
-Workbench:
-- WorkbenchUI now closes itself whenever the server would refuse shopping
-  (LOADING, YARD, VICTORY, DEFEAT), instead of staying open with dead buttons.
-- Replace stale 'crafting = TODO' comments on Player.item_flat/item_pct and in
-  GAME_LOOP_DRAFT.md; list the item polish that is actually still open.
-
-Verified headlessly on Godot 4.7.2: project imports with no errors; a real
-3-player match (1 human + 2 bots) exercised buy / craft / auto-build, slot and
-Ether limits, distance and phase gating, all 14 recipes, bot shopping, request
-routing and the UI (60 checks pass); a sped-up soak through yard, prep, siege
-and feast produced no engine errors.
+- New SkillCooldownHUD (skill_cooldown_hud.gd), created in MatchManager._build_hud.
+  Each circle fills clockwise from 12 o'clock, shows seconds left, and turns green
+  with the key letter when the skill is ready. Skill names are shown underneath.
+- Player.start_cd(slot, secs) replaces direct writes to cd[]: it records the cooldown
+  length (cd_max) and syncs it to the owning player via net_cd, so clients (not just
+  the host) see the correct cooldown. Clients count it down locally between syncs.
+- Oven Mitt Armor's cooldown reduction and the Skewer no-target refund also sync.
+- Player.cd_fill(slot) returns 0..1 for the HUD.
 ---
- scripts/GAME_LOOP_DRAFT.md |  5 +++--
- scripts/bot_brain.gd       |  4 ++--
- scripts/enemy.gd           | 10 +++++-----
- scripts/lobby_room.gd      |  2 +-
- scripts/player.gd          |  6 +++---
- scripts/skills.gd          |  2 +-
- scripts/workbench_ui.gd    |  3 +++
- 7 files changed, 18 insertions(+), 14 deletions(-)
+ scripts/match_manager.gd          |  3 ++
+ scripts/player.gd                 | 38 +++++++++++++++++++-
+ scripts/skill_cooldown_hud.gd     | 60 +++++++++++++++++++++++++++++++
+ scripts/skill_cooldown_hud.gd.uid |  1 +
+ scripts/skills.gd                 |  4 +--
+ 5 files changed, 103 insertions(+), 3 deletions(-)
+ create mode 100644 scripts/skill_cooldown_hud.gd
+ create mode 100644 scripts/skill_cooldown_hud.gd.uid
 
-diff --git a/scripts/GAME_LOOP_DRAFT.md b/scripts/GAME_LOOP_DRAFT.md
-index 9d6b0ab..09f2eb1 100644
---- a/scripts/GAME_LOOP_DRAFT.md
-+++ b/scripts/GAME_LOOP_DRAFT.md
-@@ -64,7 +64,7 @@ server spawns the 3 players and runs the loop.
-  LOADING → for wave 1..5:
-    YARD (60s)         spawn pests (cap 18); kill = Ether to ALL 3 wallets; death = auto-revive after 10s
-    dinner bell        yard pests cleared, dead players revived (100%), everyone teleported to kitchen
--   KITCHEN_PREP (10s) workbench window (crafting UI = TODO)
-+   KITCHEN_PREP (10s) workbench window: press F at the Workbench to buy Commons / craft Rares+Epics (also usable in SIEGE + FEAST)
-    SIEGE              3 sub-waves; spawn vectors by difficulty (Normal: L | Hard: 2 rotating | Hell: all 3)
-                       sub-wave 3 adds the miniboss; dead players stay dead until it dies (revive @50%)
-                       wave 5: after miniboss → Trash King (phase 2 at 50%: leaps on table, eats food)
-@@ -107,7 +107,8 @@ each attack kind draws its own red/yellow indicator (line, circle, cone) on all
- 7. Skills that need persistent objects (Snap's tripwire) are approximated as a one-shot line.
+diff --git a/scripts/match_manager.gd b/scripts/match_manager.gd
+index 8a13803..69a6f02 100644
+--- a/scripts/match_manager.gd
++++ b/scripts/match_manager.gd
+@@ -394,6 +394,9 @@ func _build_hud() -> void:
+ 	_hud = Label.new()
+ 	_hud.position = Vector2(12, 8)
+ 	layer.add_child(_hud)
++	var cd_hud := SkillCooldownHUD.new()
++	cd_hud.setup(self)
++	layer.add_child(cd_hud)
+ 	add_child(layer)
  
- ## 10. Not yet built (next steps)
--Workbench/shop UI + item crafting (stat hooks exist: `Player.item_flat / item_pct`), 3 passives + emblem
-+Item polish (Workbench itself is done): Cockroach Spray / Zapper wide-cone art, Turbo Vacuum Boots phasing
-+(needs collisions), Fridge-door aura slowing enemy attack speed. Also: 3 passives + emblem
- loadout (`on_basic_attack` hook in `srv_attack`), lobby passive/emblem icons, Spirit Crumb spectator ping,
- procedural yard, real sprites/animations + collision shapes, save system for levels/currencies/gacha,
- energy + backend payout, skill-cooldown HUD.
-diff --git a/scripts/bot_brain.gd b/scripts/bot_brain.gd
-index bb9a2aa..671850d 100644
---- a/scripts/bot_brain.gd
-+++ b/scripts/bot_brain.gd
-@@ -130,12 +130,12 @@ func _dodge(p: Player) -> Vector2:
- 			"line":
- 				var d := Vector2.from_angle(t.angle)
- 				var a: Vector2 = t.pos
--				var b := a + d * t.a
-+				var b: Vector2 = a + d * float(t.a)
- 				if Combat.seg_dist(pos, a, b) < t.b * 0.5 + 35.0:
- 					var side := d.orthogonal()
- 					return side if (pos - a).dot(side) >= 0.0 else -side
- 			"cone":
--				var to := pos - t.pos
-+				var to: Vector2 = pos - t.pos
- 				if to.length() < t.a + 30.0 and absf(Vector2.from_angle(t.angle).angle_to(to)) < deg_to_rad(t.b * 0.5) + 0.3:
- 					return to.normalized()
- 	return Vector2.ZERO
-diff --git a/scripts/enemy.gd b/scripts/enemy.gd
-index 4be19a4..2b11143 100644
---- a/scripts/enemy.gd
-+++ b/scripts/enemy.gd
-@@ -182,7 +182,7 @@ func _pick_target(now: float) -> Node2D:
- 	for p in get_tree().get_nodes_in_group("players"):
- 		if p.dead or p.untargetable:
- 			continue
--		var d := p.global_position.distance_to(global_position)
-+		var d: float = p.global_position.distance_to(global_position)
- 		if d < best_d:
- 			best_d = d
- 			best = p
-@@ -251,7 +251,7 @@ func _run_attack(a: Dictionary) -> void:
- 	var origin := global_position
- 	var dir := (tgt.global_position - origin).normalized() if tgt else face
- 	face = dir
--	var dmg := atk * a.get("mult", 1.0)
-+	var dmg: float = atk * float(a.get("mult", 1.0))
- 	heavy_hit = a.kind != "bite"
  
- 	match a.kind:
-@@ -310,7 +310,7 @@ func _run_attack(a: Dictionary) -> void:
- 				if not await _wait(0.3, token): return
- 
- 		"forks":   # Ratatouille – boomerang forks (hits out and back)
--			var end := origin + dir * a.length
-+			var end: Vector2 = origin + dir * float(a.length)
- 			rpc("net_tele", "line", origin, dir.angle(), a.length, 40.0, t)
- 			if not await _wait(t, token): return
- 			state = State.STRIKE
-@@ -441,7 +441,7 @@ func net_tele(shape: String, pos: Vector2, angle: float, a: float, b: float, dur
- func _draw() -> void:
- 	var col: Color = data.get("color", Color.WHITE) if not data.is_empty() else Color.WHITE
- 	if _tele.size() > 0:
--		var prog := (_now() - _tele.t0) / _tele.dur
-+		var prog: float = (_now() - float(_tele.t0)) / float(_tele.dur)
- 		if prog > 1.1:
- 			_tele = {}
- 		else:
-@@ -462,7 +462,7 @@ func _draw_tele(prog: float) -> void:
- 	match _tele.shape:
- 		"line":
- 			var d := Vector2.from_angle(_tele.angle)
--			var n := d.orthogonal() * _tele.b * 0.5
-+			var n: Vector2 = d.orthogonal() * float(_tele.b) * 0.5
- 			var len: float = _tele.a
- 			draw_colored_polygon(PackedVector2Array([o + n, o + d * len + n, o + d * len - n, o - n]), fill)
- 		"circle":
-diff --git a/scripts/lobby_room.gd b/scripts/lobby_room.gd
-index 47ff57d..dd59ce7 100644
---- a/scripts/lobby_room.gd
-+++ b/scripts/lobby_room.gd
-@@ -91,7 +91,7 @@ func _draw() -> void:
- 	draw_circle(rc, 190.0, Color("a64b4b", 0.55))
- 	draw_arc(rc, 190.0, 0.0, TAU, 64, Color("7d2f2f"), 4.0)
- 	draw_string(f, rc + Vector2(-60, -150), "YOUR PARTY", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("3b1d1d"))
--	var ids := Network.players.keys()
-+	var ids: Array = Network.players.keys()
- 	for i in GameData.MAX_PLAYERS:
- 		var p := rc + Vector2(-110 + 110 * i, 0)
- 		if i < ids.size():
 diff --git a/scripts/player.gd b/scripts/player.gd
-index da936ed..0228da3 100644
+index 0228da3..3fba75b 100644
 --- a/scripts/player.gd
 +++ b/scripts/player.gd
-@@ -11,8 +11,8 @@ var peer_id := 1
- var char_id := "nanay_tala"
- var level := 1
- var base: Dictionary = {}
--var item_flat: Dictionary = {}   # TODO crafting: {"atk": 15.0, "hp": 180.0}
--var item_pct: Dictionary = {}    # TODO crafting: {"aspd": 0.15, "spd": 0.10, "skill_power": 0.18, "cdr": 0.1}
-+var item_flat: Dictionary = {}   # filled from Items.total_mods() on every inventory change, e.g. {"atk": 15.0, "hp": 180.0}
-+var item_pct: Dictionary = {}    # same, for the % stats e.g. {"aspd": 0.15, "spd": 0.10, "skill_power": 0.18}
+@@ -28,7 +28,8 @@ var aim := Vector2.RIGHT
+ var move_mult := 1.0
+ var stun_until := 0.0
  
- var hp := 1.0
- var max_hp := 1.0
-@@ -274,7 +274,7 @@ func server_revive(pct: float) -> void:
+-var cd := {1: 0.0, 2: 0.0}
++var cd := {1: 0.0, 2: 0.0}          # seconds left on skill 1 / 2 (server is the source of truth)
++var cd_max := {1: 1.0, 2: 1.0}      # length of the cooldown that is currently running (for the HUD circles)
+ var atk_cd := 0.0
+ var next_crits := 0
+ var attack_count := 0
+@@ -124,6 +125,9 @@ func _physics_process(delta: float) -> void:
+ 		_local_input(delta)
+ 	if multiplayer.is_server():
+ 		_server_tick(delta)
++	else:
++		cd[1] = maxf(0.0, cd[1] - delta)       # client mirror of the server's cooldowns (HUD only)
++		cd[2] = maxf(0.0, cd[2] - delta)
+ 	for f in _fx:
+ 		f.t -= delta
+ 	_fx = _fx.filter(func(f): return f.t > 0.0)
+@@ -155,6 +159,37 @@ func _to_server(method: StringName, args: Array) -> void:
+ 		callv("rpc_id", [1, method] + args)
  
  
- func _sync_move_mult() -> void:
--	var m := stat("spd") / base.spd
-+	var m: float = stat("spd") / float(base.spd)
- 	if not is_equal_approx(m, move_mult):
- 		rpc("net_move_mult", m)
- 
++## SERVER: start (or replace) a skill cooldown and tell the owning player so the HUD circle follows it.
++func start_cd(slot: int, secs: float) -> void:
++	cd[slot] = secs
++	cd_max[slot] = maxf(secs, 0.01)
++	_push_cd()
++
++
++func _push_cd() -> void:
++	if is_bot:
++		return
++	if peer_id == multiplayer.get_unique_id():
++		net_cd(cd[1], cd[2], cd_max[1], cd_max[2])          # host's own player: no network hop
++	else:
++		rpc_id(peer_id, "net_cd", cd[1], cd[2], cd_max[1], cd_max[2])
++
++
++@rpc("any_peer", "call_local", "reliable")
++func net_cd(left1: float, left2: float, max1: float, max2: float) -> void:
++	if not _from_server():
++		return
++	cd = {1: left1, 2: left2}
++	cd_max = {1: max1, 2: max2}
++
++
++## 0.0 = just used, 1.0 = ready again (what the HUD circles show).
++func cd_fill(slot: int) -> float:
++	if cd[slot] <= 0.0:
++		return 1.0
++	return clampf(1.0 - cd[slot] / cd_max[slot], 0.0, 1.0)
++
++
+ func _server_tick(delta: float) -> void:
+ 	_item_tick(delta)
+ 	atk_cd = maxf(0.0, atk_cd - delta)
+@@ -231,6 +266,7 @@ func server_damage(amount: float, _source: Node = null) -> void:
+ 		_mitt_icd = _now() + 1.0
+ 		cd[1] = maxf(0.0, cd[1] - 0.5)
+ 		cd[2] = maxf(0.0, cd[2] - 0.5)
++		_push_cd()
+ 	if shield > 0.0:
+ 		var absorbed := minf(shield, amount)
+ 		shield -= absorbed
+diff --git a/scripts/skill_cooldown_hud.gd b/scripts/skill_cooldown_hud.gd
+new file mode 100644
+index 0000000..63b3b1e
+--- /dev/null
++++ b/scripts/skill_cooldown_hud.gd
+@@ -0,0 +1,60 @@
++class_name SkillCooldownHUD
++extends Control
++## Two circles at the bottom-centre of the screen, one per skill ([Q] and [E]).
++## Each circle fills clockwise from the top as the cooldown runs; when it is full the
++## skill is ready (bright ring + key letter). While cooling down it shows the seconds left.
++
++const RADIUS := 34.0
++const SPACING := 150.0
++const BOTTOM_MARGIN := 62.0
++const KEYS := {1: "Q", 2: "E"}
++const COL_BG := Color(0.08, 0.08, 0.10, 0.75)
++const COL_FILL := Color(0.30, 0.65, 1.00, 0.85)
++const COL_READY := Color(0.35, 0.90, 0.45, 1.0)
++
++var mm: MatchManager
++
++
++func setup(match_manager: MatchManager) -> void:
++	mm = match_manager
++	set_anchors_preset(Control.PRESET_FULL_RECT)
++	mouse_filter = Control.MOUSE_FILTER_IGNORE
++
++
++func _process(_d: float) -> void:
++	queue_redraw()
++
++
++func _draw() -> void:
++	var me := mm.local_player() if mm != null else null
++	if me == null:
++		return
++	var def: Dictionary = GameData.CHARACTERS[me.char_id]
++	var font := ThemeDB.fallback_font
++	var mid := Vector2(size.x * 0.5, size.y - BOTTOM_MARGIN)
++	for slot in [1, 2]:
++		var c := mid + Vector2((slot - 1.5) * SPACING, 0.0)
++		var fill: float = me.cd_fill(slot)
++		var ready: bool = me.cd[slot] <= 0.0
++		draw_circle(c, RADIUS, COL_BG)
++		if ready:
++			draw_circle(c, RADIUS - 3.0, Color(COL_READY, 0.35))
++		elif fill > 0.0:
++			draw_colored_polygon(_pie(c, RADIUS - 3.0, fill), COL_FILL)
++		draw_arc(c, RADIUS, 0.0, TAU, 48, COL_READY if ready else Color(1, 1, 1, 0.55), 3.0, true)
++		var label: String = KEYS[slot] if ready else "%.1f" % float(me.cd[slot])
++		draw_string(font, c + Vector2(-RADIUS, 8.0), label, HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 22, Color.WHITE)
++		var sname: String = def["skill%d" % slot].name
++		draw_string(font, c + Vector2(-75.0, RADIUS + 18.0), sname, HORIZONTAL_ALIGNMENT_CENTER, 150.0, 12, Color(1, 1, 1, 0.85))
++		if not ready:
++			draw_string(font, c + Vector2(-RADIUS, -RADIUS - 6.0), KEYS[slot], HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 13, Color(1, 1, 1, 0.7))
++
++
++## Filled wedge starting at 12 o'clock going clockwise; fraction 0..1.
++static func _pie(center: Vector2, r: float, fraction: float) -> PackedVector2Array:
++	var pts := PackedVector2Array([center])
++	var steps := maxi(2, int(48.0 * fraction))
++	for i in steps + 1:
++		var a := -PI * 0.5 + TAU * fraction * float(i) / float(steps)
++		pts.append(center + Vector2(cos(a), sin(a)) * r)
++	return pts
+diff --git a/scripts/skill_cooldown_hud.gd.uid b/scripts/skill_cooldown_hud.gd.uid
+new file mode 100644
+index 0000000..b502d8a
+--- /dev/null
++++ b/scripts/skill_cooldown_hud.gd.uid
+@@ -0,0 +1 @@
++uid://cakfereyyblj1
 diff --git a/scripts/skills.gd b/scripts/skills.gd
-index 3f28409..d7cd13d 100644
+index d7cd13d..7fe57e0 100644
 --- a/scripts/skills.gd
 +++ b/scripts/skills.gd
-@@ -42,7 +42,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
- 			Combat.zone(target, def.radius, def.dps, def.dur, p, def)
- 
- 		"dash_zone":   # Pip (dash back + smoke) / Flick (dash fwd + fire trail)
--			var dest := pos + aim * def.dash
-+			var dest: Vector2 = pos + aim * float(def.dash)
- 			p.rpc("net_teleport", dest)
- 			var zc := pos.lerp(dest, def.zone_offset)
- 			p.rpc("net_fx", zc, def.radius)
-diff --git a/scripts/workbench_ui.gd b/scripts/workbench_ui.gd
-index 608f2e6..22a3f7c 100644
---- a/scripts/workbench_ui.gd
-+++ b/scripts/workbench_ui.gd
-@@ -84,6 +84,9 @@ func hide_ui() -> void:
- func _process(_d: float) -> void:
- 	if not visible:
+@@ -11,7 +11,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
+ 	if p.dead or p.cd[slot] > 0.0:
  		return
-+	if mm.phase in [MatchManager.Phase.LOADING, MatchManager.Phase.YARD, MatchManager.Phase.VICTORY, MatchManager.Phase.DEFEAT]:
-+		hide_ui()                       # server refuses shopping in these phases (see MatchManager._can_shop)
-+		return
- 	var me := mm.local_player()
- 	if me == null or me.dead or me.global_position.distance_to(mm.workbench.global_position) > 160.0:
- 		hide_ui()                       # walked away / died
+ 	var def: Dictionary = GameData.CHARACTERS[p.char_id]["skill%d" % slot]
+-	p.cd[slot] = def.cd * (1.0 - p.cdr())
++	p.start_cd(slot, def.cd * (1.0 - p.cdr()))
+ 	if p.has_item("overclocked_igniter"):
+ 		p.empowered = true                    # next basic attack deals +50%
+ 	var pos := p.global_position
+@@ -94,7 +94,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
+ 				if e.global_position.distance_to(pos) <= def.range and (best == null or e.hp > best.hp):
+ 					best = e
+ 			if best == null:
+-				p.cd[slot] = 0.5   # no target -> refund
++				p.start_cd(slot, 0.5)   # no target -> refund
+ 				return
+ 			p.rpc("net_teleport", best.global_position - best.face * 36.0)
+ 			p.next_crits = def.crits
 -- 
 2.43.0
 
