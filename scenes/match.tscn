@@ -2,8 +2,23 @@
 
 [ext_resource type="Script" uid="uid://d0w2n82opvyca" path="res://scripts/match_manager.gd" id="1_t0cgm"]
 [ext_resource type="Script" uid="uid://ycj8hjsdlglx" path="res://scripts/dining_table.gd" id="2_5rc6j"]
+[ext_resource type="Texture2D" path="res://assets/tiles/ground_placeholder.png" id="3_ground"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ground"]
+texture = ExtResource("3_ground")
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+2:1/0 = 0
+3:1/0 = 0
+4:1/0 = 0
 
 [sub_resource type="TileSet" id="TileSet_q6ima"]
+sources/6 = SubResource("TileSetAtlasSource_ground")
 
 [node name="root" type="Node2D" unique_id=1243528980]
 script = ExtResource("1_t0cgm")
