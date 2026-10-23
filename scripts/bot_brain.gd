@@ -130,12 +130,12 @@ func _dodge(p: Player) -> Vector2:
 			"line":
 				var d := Vector2.from_angle(t.angle)
 				var a: Vector2 = t.pos
-				var b := a + d * t.a
+				var b: Vector2 = a + d * float(t.a)
 				if Combat.seg_dist(pos, a, b) < t.b * 0.5 + 35.0:
 					var side := d.orthogonal()
 					return side if (pos - a).dot(side) >= 0.0 else -side
 			"cone":
-				var to := pos - t.pos
+				var to: Vector2 = pos - t.pos
 				if to.length() < t.a + 30.0 and absf(Vector2.from_angle(t.angle).angle_to(to)) < deg_to_rad(t.b * 0.5) + 0.3:
 					return to.normalized()
 	return Vector2.ZERO

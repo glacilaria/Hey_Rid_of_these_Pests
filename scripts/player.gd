@@ -11,8 +11,8 @@ var peer_id := 1
 var char_id := "nanay_tala"
 var level := 1
 var base: Dictionary = {}
-var item_flat: Dictionary = {}   # TODO crafting: {"atk": 15.0, "hp": 180.0}
-var item_pct: Dictionary = {}    # TODO crafting: {"aspd": 0.15, "spd": 0.10, "skill_power": 0.18, "cdr": 0.1}
+var item_flat: Dictionary = {}   # filled from Items.total_mods() on every inventory change, e.g. {"atk": 15.0, "hp": 180.0}
+var item_pct: Dictionary = {}    # same, for the % stats e.g. {"aspd": 0.15, "spd": 0.10, "skill_power": 0.18}
 
 var hp := 1.0
 var max_hp := 1.0
@@ -274,7 +274,7 @@ func server_revive(pct: float) -> void:
 
 
 func _sync_move_mult() -> void:
-	var m := stat("spd") / base.spd
+	var m: float = stat("spd") / float(base.spd)
 	if not is_equal_approx(m, move_mult):
 		rpc("net_move_mult", m)
 

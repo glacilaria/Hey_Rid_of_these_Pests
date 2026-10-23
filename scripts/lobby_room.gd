@@ -91,7 +91,7 @@ func _draw() -> void:
 	draw_circle(rc, 190.0, Color("a64b4b", 0.55))
 	draw_arc(rc, 190.0, 0.0, TAU, 64, Color("7d2f2f"), 4.0)
 	draw_string(f, rc + Vector2(-60, -150), "YOUR PARTY", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("3b1d1d"))
-	var ids := Network.players.keys()
+	var ids: Array = Network.players.keys()
 	for i in GameData.MAX_PLAYERS:
 		var p := rc + Vector2(-110 + 110 * i, 0)
 		if i < ids.size():

@@ -182,7 +182,7 @@ func _pick_target(now: float) -> Node2D:
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.dead or p.untargetable:
 			continue
-		var d := p.global_position.distance_to(global_position)
+		var d: float = p.global_position.distance_to(global_position)
 		if d < best_d:
 			best_d = d
 			best = p
@@ -251,7 +251,7 @@ func _run_attack(a: Dictionary) -> void:
 	var origin := global_position
 	var dir := (tgt.global_position - origin).normalized() if tgt else face
 	face = dir
-	var dmg := atk * a.get("mult", 1.0)
+	var dmg: float = atk * float(a.get("mult", 1.0))
 	heavy_hit = a.kind != "bite"
 
 	match a.kind:
@@ -310,7 +310,7 @@ func _run_attack(a: Dictionary) -> void:
 				if not await _wait(0.3, token): return
 
 		"forks":   # Ratatouille – boomerang forks (hits out and back)
-			var end := origin + dir * a.length
+			var end: Vector2 = origin + dir * float(a.length)
 			rpc("net_tele", "line", origin, dir.angle(), a.length, 40.0, t)
 			if not await _wait(t, token): return
 			state = State.STRIKE
@@ -441,7 +441,7 @@ func net_tele(shape: String, pos: Vector2, angle: float, a: float, b: float, dur
 func _draw() -> void:
 	var col: Color = data.get("color", Color.WHITE) if not data.is_empty() else Color.WHITE
 	if _tele.size() > 0:
-		var prog := (_now() - _tele.t0) / _tele.dur
+		var prog: float = (_now() - float(_tele.t0)) / float(_tele.dur)
 		if prog > 1.1:
 			_tele = {}
 		else:
@@ -462,7 +462,7 @@ func _draw_tele(prog: float) -> void:
 	match _tele.shape:
 		"line":
 			var d := Vector2.from_angle(_tele.angle)
-			var n := d.orthogonal() * _tele.b * 0.5
+			var n: Vector2 = d.orthogonal() * float(_tele.b) * 0.5
 			var len: float = _tele.a
 			draw_colored_polygon(PackedVector2Array([o + n, o + d * len + n, o + d * len - n, o - n]), fill)
 		"circle":

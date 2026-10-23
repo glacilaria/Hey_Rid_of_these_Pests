@@ -64,7 +64,7 @@ server spawns the 3 players and runs the loop.
  LOADING → for wave 1..5:
    YARD (60s)         spawn pests (cap 18); kill = Ether to ALL 3 wallets; death = auto-revive after 10s
    dinner bell        yard pests cleared, dead players revived (100%), everyone teleported to kitchen
-   KITCHEN_PREP (10s) workbench window (crafting UI = TODO)
+   KITCHEN_PREP (10s) workbench window: press F at the Workbench to buy Commons / craft Rares+Epics (also usable in SIEGE + FEAST)
    SIEGE              3 sub-waves; spawn vectors by difficulty (Normal: L | Hard: 2 rotating | Hell: all 3)
                       sub-wave 3 adds the miniboss; dead players stay dead until it dies (revive @50%)
                       wave 5: after miniboss → Trash King (phase 2 at 50%: leaps on table, eats food)
@@ -107,7 +107,8 @@ each attack kind draws its own red/yellow indicator (line, circle, cone) on all 
 7. Skills that need persistent objects (Snap's tripwire) are approximated as a one-shot line.
 
 ## 10. Not yet built (next steps)
-Workbench/shop UI + item crafting (stat hooks exist: `Player.item_flat / item_pct`), 3 passives + emblem
+Item polish (Workbench itself is done): Cockroach Spray / Zapper wide-cone art, Turbo Vacuum Boots phasing
+(needs collisions), Fridge-door aura slowing enemy attack speed. Also: 3 passives + emblem
 loadout (`on_basic_attack` hook in `srv_attack`), lobby passive/emblem icons, Spirit Crumb spectator ping,
 procedural yard, real sprites/animations + collision shapes, save system for levels/currencies/gacha,
 energy + backend payout, skill-cooldown HUD.

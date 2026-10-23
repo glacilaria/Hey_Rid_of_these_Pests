@@ -42,7 +42,7 @@ static func cast(p: Player, slot: int, aim: Vector2, mouse: Vector2) -> void:
 			Combat.zone(target, def.radius, def.dps, def.dur, p, def)
 
 		"dash_zone":   # Pip (dash back + smoke) / Flick (dash fwd + fire trail)
-			var dest := pos + aim * def.dash
+			var dest: Vector2 = pos + aim * float(def.dash)
 			p.rpc("net_teleport", dest)
 			var zc := pos.lerp(dest, def.zone_offset)
 			p.rpc("net_fx", zc, def.radius)
